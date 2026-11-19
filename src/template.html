@@ -45,14 +45,11 @@
       <section class="view active" id="view-nucleo">
         <div class="section-heading"><div><div class="eyebrow">00 — ORGANISMO / INSTÂNCIA 001</div><h2>O <em>Núcleo</em></h2></div><div class="coordinates">LATÊNCIA <b>13 ms</b><br>ESTADO <b class="acid">ACORDADO</b></div></div>
         <div class="core-layout">
-          <div class="organism-stage">
+          <div class="organism-stage" id="organism-stage">
             <div class="stage-grid"></div><div class="stage-crosshair">+</div>
-            <canvas id="organism" aria-label="Representação procedural de um organismo semelhante a brócolis"></canvas>
+            <canvas id="organism" aria-label="Modelo tridimensional em malha wireframe de um brócolis com caule e raízes expostas"></canvas>
             <div class="stage-label top-left">ESPÉCIME // B-001</div><div class="stage-label top-right">● EM OBSERVAÇÃO</div>
-            <div class="stage-label bottom-left">MODO <span id="render-name">PARTÍCULAS</span></div><div class="stage-label bottom-right">ARRASTE PARA INTERAGIR</div>
-            <div class="render-switch" role="group" aria-label="Modo de renderização">
-              <button class="render-option selected" data-render="particles">PONTOS</button><button class="render-option" data-render="wire">MALHA</button><button class="render-option" data-render="ascii">ASCII</button>
-            </div>
+            <div class="stage-label bottom-left">RENDER <span>MALHA TRIANGULAR</span></div><div class="stage-label bottom-right">ARRASTE · SCROLL PARA APROXIMAR</div>
             <div class="core-caption"><span class="caption-index">FIG. 001</span><span>Um sistema radicular procura<br>por algo que ainda não existe.</span></div>
           </div>
           <aside class="core-aside">
@@ -64,15 +61,15 @@
       </section>
 
       <section class="view" id="view-frequencias">
-        <div class="section-heading"><div><div class="eyebrow">01 — CAMADA SONORA / 04 REGISTROS</div><h2>Frequências</h2></div><div class="coordinates">FONTE <b>SÍNTESE LOCAL</b><br>SEM ARQUIVOS EXTERNOS</div></div>
-        <div class="music-intro"><p>O organismo se comunica através de padrões. Cada faixa é sintetizada no seu navegador.</p><div class="playing-indicator"><span class="eq"><i></i><i></i><i></i><i></i></span><span id="now-playing">NENHUMA FREQUÊNCIA ATIVA</span></div></div>
+        <div class="section-heading"><div><div class="eyebrow">01 — CAMADA SONORA / <span id="track-count">12</span> REGISTROS</div><h2>Frequências</h2></div><div class="coordinates">FONTE <b>ARQUIVOS LOCAIS</b><br>ANÁLISE EM TEMPO REAL</div></div>
+        <div class="music-intro"><p>Registros sonoros recuperados do acervo. A reprodução começa após sua interação.</p><div class="playing-indicator"><span class="eq"><i></i><i></i><i></i><i></i></span><span id="now-playing">NENHUMA FREQUÊNCIA ATIVA</span></div></div>
         <div class="track-list" id="track-list"></div>
-        <div class="music-foot"><span>✳ FAIXAS SINTETIZADAS EM TEMPO REAL</span><div class="music-actions"><button id="random-track" class="text-action">ALEATÓRIA ↻</button><button id="repeat-track" class="text-action" aria-pressed="false">REPETIR: NÃO</button><span>VOLUME <input id="volume" type="range" min="0" max="100" value="45" aria-label="Volume"></span></div></div>
+        <div class="music-foot"><span>✳ <b id="track-count-foot">12</b> REGISTROS · MP3 LOCAL</span><div class="music-actions"><button id="random-track" class="text-action">ALEATÓRIA ↻</button><button id="repeat-track" class="text-action" aria-pressed="false">REPETIR: NÃO</button><span>VOLUME <input id="volume" type="range" min="0" max="100" value="45" aria-label="Volume"></span></div></div>
       </section>
 
       <section class="view" id="view-transmissao">
         <div class="section-heading"><div><div class="eyebrow">02 — OBSERVAÇÃO EM TEMPO REAL</div><h2>Transmissão</h2></div><button class="outline-btn" id="fullscreen">TELA CHEIA ⤢</button></div>
-        <div class="transmission-frame" id="transmission-frame"><canvas id="transmission-shader" aria-hidden="true"></canvas><canvas id="transmission"></canvas><div class="transmission-overlay"><div class="eyebrow">SINAL AO VIVO <span class="live-dot"></span></div><div class="transmission-title" id="transmission-title">Organismo</div><div class="transmission-meta">FREQUÊNCIA <b id="trans-frequency">—</b><br>ORIGEM <b>DESCONHECIDA</b></div></div><div class="transmission-controls" role="group" aria-label="Visualizador"><button class="visual-mode chosen" data-visual="organismo">ORGANISMO</button><button class="visual-mode" data-visual="abismo">ABISMO</button><button class="visual-mode" data-visual="entidade">ENTIDADE</button><button class="visual-mode" data-visual="pulso">PULSO</button><button class="visual-mode" data-visual="colonia">COLÔNIA</button></div></div>
+        <div class="transmission-frame" id="transmission-frame"><canvas id="transmission-shader" aria-hidden="true"></canvas><div class="transmission-organism-stage" id="transmission-organism-stage"></div><canvas id="transmission"></canvas><div class="transmission-overlay"><div class="eyebrow">SINAL AO VIVO <span class="live-dot"></span></div><div class="transmission-title" id="transmission-title">Organismo</div><div class="transmission-meta">FREQUÊNCIA <b id="trans-frequency">—</b><br>ORIGEM <b>DESCONHECIDA</b></div></div><div class="transmission-controls" role="group" aria-label="Visualizador"><button class="visual-mode chosen" data-visual="organismo">ORGANISMO</button><button class="visual-mode" data-visual="abismo">ABISMO</button><button class="visual-mode" data-visual="entidade">ENTIDADE</button><button class="visual-mode" data-visual="pulso">PULSO</button><button class="visual-mode" data-visual="colonia">COLÔNIA</button></div></div>
       </section>
 
       <section class="view" id="view-arquivos">
@@ -105,7 +102,7 @@
 
       <section class="view" id="view-subsolo">
         <div class="section-heading"><div><div class="eyebrow">06 — CAMADA OCULTA / ACESSO CONCEDIDO</div><h2>O <em>Subsolo</em></h2></div><div class="coordinates acid">SINAL RECONHECIDO<br>VOCÊ DESCEU.</div></div>
-        <div class="subsoil-content"><div class="subsoil-symbol">✳</div><div class="eyebrow">FRAGMENTO 001 / SEM DATA</div><blockquote>“Você não encontrou uma passagem.<br>Você <em>se lembrou</em> dela.”</blockquote><p>Há algo abaixo da raiz. Não é uma origem. É a parte que continua crescendo depois que a luz acaba.</p><button class="acid-btn" id="secret-track">OUVIR FREQUÊNCIA OCULTA <b>↗</b></button></div>
+        <div class="subsoil-content"><div class="subsoil-symbol">✳</div><div class="eyebrow">FRAGMENTO 001 / SEM DATA</div><blockquote>“Você não encontrou uma passagem.<br>Você <em>se lembrou</em> dela.”</blockquote><p>Há algo abaixo da raiz. Não é uma origem. É a parte que continua crescendo depois que a luz acaba.</p><button class="acid-btn" id="secret-track">SINTONIZAR FRAGMENTO RECENTE <b>↗</b></button></div>
       </section>
     </main>
 

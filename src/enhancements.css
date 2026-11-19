@@ -3,6 +3,13 @@
 .music-actions{display:flex;align-items:center;gap:18px}
 .music-actions button[aria-pressed="true"]{color:var(--acid)}
 #transmission-shader{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+#organism{cursor:grab;touch-action:none}
+#organism:active{cursor:grabbing}
+.transmission-organism-stage{display:none;position:absolute;inset:0;z-index:1;overflow:hidden;pointer-events:none}
+.transmission-organism-stage.active{display:block}
+.transmission-organism-stage #organism{pointer-events:auto}
+.transmission-frame #transmission.transmission-canvas-hidden{display:none}
+.track.unavailable{opacity:.45}
 #transmission{z-index:1}
 @media(max-width:760px){.music-actions{flex-wrap:wrap;gap:11px}}
 .boot-inner{width:min(610px,calc(100vw - 48px))}

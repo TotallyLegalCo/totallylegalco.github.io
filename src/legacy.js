@@ -4,6 +4,7 @@ import { VisualizerManager } from './core/visualizer';
 import { AudioManager } from './core/audio-manager';
 import { AnomalyManager } from './core/anomaly-manager';
 import { InstabilityController } from './core/instability';
+import musicCatalog from './data/musicas.json';
 
 export function mountExperience(host) {
   'use strict';
@@ -33,21 +34,24 @@ export function mountExperience(host) {
     'O organismo reconhece o intervalo entre seus passos.',
     'Tudo que cresce aprende a imitar o silêncio.'
   ];
-  const tracks = [
-    { id:'germinacao', title:'Germinação lenta', artist:'padrão 001 · 68.4 Hz', duration:164, base:55, notes:[0,7,12,19], icon:'✳', type:'low' },
-    { id:'seiva', title:'Seiva escura', artist:'padrão 002 · 43.1 Hz', duration:207, base:43, notes:[0,3,7,10], icon:'◉', type:'dark' },
-    { id:'sala-vazia', title:'A sala vazia', artist:'padrão 003 · 91.8 Hz', duration:188, base:73, notes:[0,5,9,14], icon:'⌁', type:'high' },
-    { id:'sonho-radicular', title:'Sonho radicular', artist:'padrão 004 · 32.0 Hz', duration:240, base:32, notes:[0,7,11,18], icon:'◌', type:'drift' },
-    { id:'abaixo', title:'Abaixo da raiz', artist:'fragmento oculto · ??? Hz', duration:222, base:38, notes:[0,2,7,13], icon:'✴', type:'secret', hidden:true }
-  ];
+  const tracks = musicCatalog.map((track, index) => ({
+    ...track,
+    artist:'ARQUIVO LOCAL · MP3',
+    duration:null,
+    icon:['✳','◉','⌁','◌','✴'][index % 5],
+    src:`${import.meta.env.BASE_URL}assets/audio/${encodeURIComponent(track.file)}`
+  }));
   const state = {
-    connected:false, currentView:'nucleo', currentTrack:null, playing:false, elapsed:0, timer:null, repeat:false, instability:0.06,
+    connected:false, currentView:'nucleo', currentTrack:null, playing:false, elapsed:0, repeat:false, instability:0.06,
     random:false, terminalHistory:[], historyIndex:0,
     unlocked:localStorage.getItem('broccoli-subsoil') === 'yes', discoveries:JSON.parse(localStorage.getItem('broccoli-discoveries') || '[]'),
-    reduced:localStorage.getItem('broccoli-reduced') === 'yes' || (localStorage.getItem('broccoli-reduced') === null && window.matchMedia('(prefers-reduced-motion: reduce)').matches), render:'particles', visual:'organismo',
-    audio:null, master:null, analyser:null, bins:null, oscillators:[], mouseX:0, mouseY:0, drag:false, sessionStart:Date.now(), lastMessage:Date.now()
+    reduced:localStorage.getItem('broccoli-reduced') === 'yes' || (localStorage.getItem('broccoli-reduced') === null && window.matchMedia('(prefers-reduced-motion: reduce)').matches), visual:'organismo',
+    analyser:null, bins:null, sessionStart:Date.now(), lastMessage:Date.now()
   };
   const audioManager = new AudioManager();
+  const audioElement = new Audio();
+  audioElement.preload = 'metadata';
+  audioElement.volume = 1;
   let disposed = false;
   let sessionInterval = 0;
   let resizeObserver;
@@ -149,6 +153,7 @@ export function mountExperience(host) {
     state.sessionStart=Date.now();state.lastMessage=Date.now();
     discover('conexao'); updateDiscovery(); buildTracks(); startSession(); resizeCanvases();
     visualizers.start();
+    void loadOrganism();
     updateSharedState({ connected:true });
     const route = window.location.hash.slice(1);
     if (['nucleo','frequencias','transmissao','arquivos','oraculo','terminal','anomalias','subsolo'].includes(route)) navigate(route, false);
@@ -191,6 +196,7 @@ export function mountExperience(host) {
     if(view==='subsolo' && !state.unlocked){showOracle('O acesso ainda não foi reconhecido.');return;}
     instability.registerInteraction(view==='anomalias'?0.065:0.025);
     state.currentView=view; $$('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${view}`));
+    syncOrganismCanvas();
     $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
     updateSharedState({ view });
     if(writeHash && window.location.hash !== `#${view}`) window.history.pushState({ view }, '', `#${view}`);
@@ -242,66 +248,76 @@ export function mountExperience(host) {
   $('#spawn-anomaly').addEventListener('click',()=>{instability.registerInteraction(.08);if(anomalies.open())lastAnomalyAt=Date.now();});
   $('#clear-anomalies').addEventListener('click',()=>anomalies.closeAll(true));
 
-  // Original synthesized tone beds; no remote audio or third-party recordings.
-  async function ensureAudio(){
-    const available=await audioManager.resume(Number($('#volume').value));
-    state.audio=audioManager.context;state.master=audioManager.master;state.analyser=audioManager.analyser;state.bins=audioManager.bins;
-    return available;
-  }
+  const metadataProbes = new Set();
+  function escapeHtml(value){return String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}
   function buildTracks(){
-    $('#track-list').innerHTML=tracks.filter(t=>!t.hidden||state.unlocked).map((t,i)=>`<div class="track ${t.hidden?'secret-track':''}" data-track="${t.id}"><button class="track-play" aria-label="Reproduzir ${t.title}">▶</button><div class="track-cover">${t.icon}</div><div class="track-copy"><b>${t.title}</b><span>${t.artist}</span></div><span class="track-length">${formatTime(t.duration)}</span></div>`).join('');
+    $('#track-count').textContent=String(tracks.length).padStart(2,'0');
+    $('#track-count-foot').textContent=String(tracks.length).padStart(2,'0');
+    $('#track-list').innerHTML=tracks.map(t=>`<div class="track" data-track="${t.id}"><button class="track-play" aria-label="Reproduzir ${escapeHtml(t.title)}">▶</button><div class="track-cover">${t.icon}</div><div class="track-copy"><b>${escapeHtml(t.title)}</b><span>${t.artist}</span></div><span class="track-length">${formatTime(t.duration)}</span></div>`).join('');
     $$('.track').forEach(el=>el.querySelector('.track-play').addEventListener('click',()=>playTrack(el.dataset.track)));
+    probeTrackDurations();
   }
-  function formatTime(n){return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;}
-  function stopOscillators(){state.oscillators.forEach(o=>{try{o.stop();}catch(_){}});state.oscillators=[];}
+  function formatTime(n){if(!Number.isFinite(n))return '--:--';return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(Math.floor(n%60)).padStart(2,'0')}`;}
+  function updateTrackRow(track){const row=$(`.track[data-track="${track.id}"]`);if(row)row.querySelector('.track-length').textContent=formatTime(track.duration);}
+  function probeTrackDurations(){
+    let cursor=0;
+    const worker=()=>{
+      if(disposed)return;
+      const track=tracks[cursor++];if(!track)return;
+      const probe=new Audio();probe.preload='metadata';metadataProbes.add(probe);
+      let settled=false;
+      const finish=()=>{if(settled)return;settled=true;window.clearTimeout(timeout);probe.removeEventListener('loadedmetadata',onMetadata);probe.removeEventListener('error',onError);metadataProbes.delete(probe);probe.removeAttribute('src');probe.load();worker();};
+      const onMetadata=()=>{if(Number.isFinite(probe.duration)){track.duration=Math.floor(probe.duration);updateTrackRow(track);}finish();};
+      const onError=()=>{track.unavailable=true;const row=$(`.track[data-track="${track.id}"]`);if(row){row.classList.add('unavailable');row.querySelector('.track-length').textContent='SINAL AUSENTE';}finish();};
+      probe.addEventListener('loadedmetadata',onMetadata);probe.addEventListener('error',onError);
+      const timeout=window.setTimeout(finish,15000);probe.src=track.src;probe.load();
+    };
+    for(let i=0;i<Math.min(3,tracks.length);i++)worker();
+  }
   async function playTrack(id){
-    const track=tracks.find(t=>t.id===id); if(!track|| (track.hidden&&!state.unlocked))return;
+    const track=tracks.find(t=>t.id===id); if(!track||track.unavailable)return;
     if(state.currentTrack?.id===id && state.playing){pauseAudio();return;}
-    const resumeAt=state.currentTrack?.id===id&&state.elapsed<state.currentTrack.duration?state.elapsed:0;
-    if(!await ensureAudio()){showOracle('Este navegador não disponibilizou a camada sonora.');return;}
-    stopOscillators(); state.currentTrack=track; state.elapsed=resumeAt; state.playing=true;
-    track.notes.forEach((step,i)=>{
-      const osc=state.audio.createOscillator(), gain=state.audio.createGain(), filter=state.audio.createBiquadFilter();
-      osc.type=track.type==='high'?'sine':(i===0?'triangle':'sine');
-      osc.frequency.value=track.base*Math.pow(2,step/12); filter.type='lowpass'; filter.frequency.value=track.type==='high'?900:390;
-      gain.gain.value=i===0?.075:.022; osc.connect(filter); filter.connect(gain); gain.connect(state.master); osc.start(); state.oscillators.push(osc);
-      if(track.type==='drift'||track.type==='secret'){const lfo=state.audio.createOscillator(),lg=state.audio.createGain();lfo.frequency.value=.06+i*.035;lg.gain.value=track.base*.12;lfo.connect(lg);lg.connect(osc.frequency);lfo.start();state.oscillators.push(lfo);}
-    });
-    if(!state.timer)state.timer=setInterval(tickAudio,1000);
+    const sameTrack=state.currentTrack?.id===id;
+    if(!sameTrack){audioElement.pause();audioElement.src=track.src;audioElement.load();state.elapsed=0;}
+    if(!await audioManager.connectMediaElement(audioElement,Number($('#volume').value))){showOracle('Este navegador não disponibilizou a camada sonora.');return;}
+    try{await audioElement.play();}catch(error){console.warn('BROCCOLI: reprodução de áudio recusada.',error);return;}
+    state.analyser=audioManager.analyser;state.bins=audioManager.bins;state.currentTrack=track;state.playing=true;
     updatePlayer(); navigate('frequencias'); $('#now-playing').textContent=`SINAL ATIVO · ${track.title.toUpperCase()}`;
     $$('.track').forEach(el=>el.classList.toggle('active',el.dataset.track===id));
-    if(track.hidden)discover('subsolo-audio'); else discover('frequencia');
+    discover('frequencia');
   }
-  function pauseAudio(){state.playing=false;stopOscillators();updatePlayer();}
-  function tickAudio(){
-    if(!state.playing)return;
-    state.elapsed++;
-    if(state.currentTrack&&state.elapsed>=state.currentTrack.duration){
-      if(state.repeat){state.elapsed=0;}
-      else if(state.random){
-        const available=tracks.filter(track=>!track.hidden||state.unlocked).filter(track=>track.id!==state.currentTrack?.id);
-        const next=available[Math.floor(Math.random()*available.length)];
-        if(next){playTrack(next.id);return;} pauseAudio();
-      } else {pauseAudio();state.elapsed=state.currentTrack.duration;}
-    }
+  function pauseAudio(){audioElement.pause();state.playing=false;updatePlayer();}
+  function onAudioEnded(){
+    if(state.repeat){audioElement.currentTime=0;void audioElement.play();return;}
+    if(state.random){const available=tracks.filter(track=>track.id!==state.currentTrack?.id&&!track.unavailable);if(available.length){void playTrack(available[Math.floor(Math.random()*available.length)].id);return;}}
+    state.playing=false;state.elapsed=state.currentTrack?.duration||Math.floor(audioElement.currentTime);updatePlayer();
+  }
+  function onAudioProgress(){
+    if(!state.currentTrack)return;
+    state.elapsed=Math.floor(audioElement.currentTime||0);
+    if(Number.isFinite(audioElement.duration)){state.currentTrack.duration=Math.floor(audioElement.duration);updateTrackRow(state.currentTrack);}
     updatePlayer();
   }
+  audioElement.addEventListener('timeupdate',onAudioProgress);
+  audioElement.addEventListener('loadedmetadata',onAudioProgress);
+  audioElement.addEventListener('ended',onAudioEnded);
+  audioElement.addEventListener('error',()=>{state.playing=false;if(state.currentTrack)state.currentTrack.unavailable=true;updatePlayer();});
   function updatePlayer(){
     const t=state.currentTrack; $('#player-title').textContent=t?t.title.toUpperCase():'NENHUMA FREQUÊNCIA';
-    $('#player-subtitle').textContent=t?(state.playing?'padrão sintetizado · ao vivo':'sinal pausado'):'selecione um sinal para ouvir';
+    $('#player-subtitle').textContent=t?(state.playing?'arquivo local · ao vivo':'sinal pausado'):'selecione um sinal para ouvir';
     $('#player-time').textContent=t?`${formatTime(state.elapsed)} / ${formatTime(t.duration)}`:'00:00';
     $('#play-toggle').textContent=state.playing?'Ⅱ':'▶';$('#play-toggle').setAttribute('aria-label',state.playing?'Pausar':'Reproduzir');$('#player').classList.toggle('playing',state.playing);
     updateSharedState({ playing:state.playing, trackId:t?.id ?? null });
-    if(t){$('#trans-frequency').textContent=t.artist.split('·')[1]?.trim()||'??? Hz';}
+    if(t){$('#trans-frequency').textContent=state.playing?'ANÁLISE AO VIVO':'SINAL LOCAL';}
   }
   $('#play-toggle').addEventListener('click',()=>{if(state.playing)pauseAudio();else if(state.currentTrack)playTrack(state.currentTrack.id);else navigate('frequencias');});
   $('#volume').addEventListener('input',e=>audioManager.setVolume(Number(e.target.value)));
-  $('#secret-track').addEventListener('click',()=>playTrack('abaixo'));
+  $('#secret-track').addEventListener('click',()=>playTrack(tracks[tracks.length-1]?.id));
   $('#random-track').addEventListener('click',()=>{
     state.random=!state.random;
     $('#random-track').setAttribute('aria-pressed',String(state.random));
     $('#random-track').textContent=`ALEATÓRIA: ${state.random?'SIM':'NÃO'}`;
-    const available=tracks.filter(track=>!track.hidden||state.unlocked).filter(track=>track.id!==state.currentTrack?.id);
+    const available=tracks.filter(track=>!track.unavailable).filter(track=>track.id!==state.currentTrack?.id);
     if(state.random&&available.length) playTrack(available[Math.floor(Math.random()*available.length)].id);
   });
   $('#repeat-track').addEventListener('click',event=>{
@@ -310,15 +326,13 @@ export function mountExperience(host) {
     event.currentTarget.textContent=`REPETIR: ${state.repeat?'SIM':'NÃO'}`;
   });
 
-  // Render mode controls and reduced-motion preference.
-  const renderNames={particles:'PARTÍCULAS',wire:'MALHA',ascii:'ASCII'};
-  $$('.render-option').forEach(b=>b.addEventListener('click',()=>{$$('.render-option').forEach(x=>x.classList.toggle('selected',x===b));state.render=b.dataset.render;$('#render-name').textContent=renderNames[state.render];}));
-  function applyMotionPreference(reduced){state.reduced=reduced;document.body.classList.toggle('reduced-motion',reduced);visualizers.setReducedMotion(reduced);$('#motion-toggle').setAttribute('aria-pressed',String(reduced));}
+  // Reduced-motion preference.
+  function applyMotionPreference(reduced){state.reduced=reduced;document.body.classList.toggle('reduced-motion',reduced);visualizers.setReducedMotion(reduced);organismView?.setReducedMotion(reduced);$('#motion-toggle').setAttribute('aria-pressed',String(reduced));}
   $('#motion-toggle').addEventListener('click',()=>{applyMotionPreference(!state.reduced);localStorage.setItem('broccoli-reduced',state.reduced?'yes':'no');});
   const onSystemMotionChange=event=>{if(localStorage.getItem('broccoli-reduced')===null)applyMotionPreference(event.matches);};
   reduceMotionQuery.addEventListener('change',onSystemMotionChange);
   if(state.reduced){document.body.classList.add('reduced-motion');$('#motion-toggle').setAttribute('aria-pressed','true');}
-  $$('.visual-mode').forEach(b=>b.addEventListener('click',()=>{$$('.visual-mode').forEach(x=>x.classList.toggle('chosen',x===b));state.visual=b.dataset.visual;$('#transmission-title').textContent=b.textContent[0]+b.textContent.slice(1).toLowerCase();}));
+  $$('.visual-mode').forEach(b=>b.addEventListener('click',()=>{$$('.visual-mode').forEach(x=>x.classList.toggle('chosen',x===b));state.visual=b.dataset.visual;$('#transmission-title').textContent=b.textContent[0]+b.textContent.slice(1).toLowerCase();syncOrganismCanvas();}));
   $('#fullscreen').addEventListener('click',()=>{const el=$('#transmission-frame');if(document.fullscreenElement)document.exitFullscreen?.();else el.requestFullscreen?.();});
 
   // Oracle
@@ -373,33 +387,42 @@ export function mountExperience(host) {
     startBootSequence();
   }
 
-  // Canvas organisms and the five audiovisual transmissions.
-  const organism=$('#organism'),org=organism.getContext('2d'),trans=$('#transmission'),tx=trans.getContext('2d');
-  function resizeCanvases(){[organism,trans].forEach(c=>{const r=c.getBoundingClientRect(),d=visualizers.resolutionScale;if(r.width&&r.height){c.width=Math.floor(r.width*d);c.height=Math.floor(r.height*d);const ctx=c.getContext('2d');ctx.setTransform(d,0,0,d,0,0);}});ambientShader?.resize();}
-  organism.addEventListener('pointerdown',e=>{state.drag=true;organism.setPointerCapture(e.pointerId);});
-  organism.addEventListener('pointerup',()=>state.drag=false);
-  organism.addEventListener('pointermove',e=>{const r=organism.getBoundingClientRect();state.mouseX=(e.clientX-r.left-r.width/2)/r.width;state.mouseY=(e.clientY-r.top-r.height/2)/r.height;if(state.drag)discover('interacao');});
-  function audioLevel(){if(!state.analyser||!state.playing)return .12;state.analyser.getByteFrequencyData(state.bins);let sum=0;for(let i=0;i<state.bins.length;i++)sum+=state.bins[i];return Math.min(.75,sum/state.bins.length/255);}
-  function drawOrganism(ctx,w,h,time,mode=state.render){
-    const distortion=state.reduced?0:state.instability;
-    const cx=w*.5+state.mouseX*w*.10+Math.sin(time*.014)*distortion*8, cy=h*.54+state.mouseY*h*.06+Math.sin(time*.021)*distortion*4, scale=Math.min(w,h)*.35, pulse=1+Math.sin(time*.0018)*.025+audioLevel()*.15+Math.sin(time*.009)*distortion*.045;
-    ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(cx,cy);ctx.scale(pulse,pulse);ctx.rotate(state.mouseX*.16+Math.sin(time*.0004)*.04+Math.sin(time*.006)*distortion*.035);
-    // branching roots
-    ctx.lineWidth=1;for(let i=0;i<13;i++){let a=(i/13-.5)*2.1;ctx.beginPath();ctx.moveTo((i-6)*2,scale*.35);ctx.bezierCurveTo((i-6)*9,scale*.65,Math.sin(i*4)*scale*.55,scale*.76,Math.sin(i*8)*scale*.82,scale*(.75+(i%3)*.07));ctx.strokeStyle=`rgba(167,255,60,${mode==='wire'?.34:.2})`;ctx.stroke();}
-    // stalk with veins
-    const stem=ctx.createLinearGradient(0,-scale*.1,0,scale*.48);stem.addColorStop(0,'#718c38');stem.addColorStop(1,'#1a2413');ctx.fillStyle=stem;ctx.beginPath();ctx.moveTo(-scale*.11,scale*.42);ctx.quadraticCurveTo(-scale*.07,scale*.05,-scale*.1,-scale*.18);ctx.quadraticCurveTo(0,-scale*.27,scale*.1,-scale*.18);ctx.quadraticCurveTo(scale*.07,scale*.05,scale*.12,scale*.42);ctx.closePath();ctx.fill();
-    for(let i=0;i<5;i++){ctx.beginPath();ctx.moveTo(0,scale*(.28-i*.08));ctx.quadraticCurveTo((i-2)*scale*.08,-scale*.02,(i-2)*scale*.12,-scale*.28);ctx.strokeStyle='#a7ff3c35';ctx.stroke();}
-    // dense crown made from overlapping clustered florets
-    const lobes=[];for(let i=0;i<8;i++){const a=i*Math.PI/4,rad=scale*(.18+(i%2)*.025);lobes.push([Math.cos(a)*rad,-scale*.48+Math.sin(a)*rad*.68,scale*(.19+(i%3)*.012)]);}lobes.push([0,-scale*.52,scale*.22]);
-    for(let k=0;k<lobes.length;k++){const [x,y,r]=lobes[k];let gradient=ctx.createRadialGradient(x-r*.22,y-r*.3,1,x,y,r);gradient.addColorStop(0,'#9ed93c');gradient.addColorStop(.45,k%2?'#42651f':'#527c27');gradient.addColorStop(1,'#172413');ctx.fillStyle=gradient;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();}
-    // particles / wire lattice texture
-    for(let i=0;i<470;i++){const a=i*2.39996,rr=Math.sqrt((i+.5)/470),rad=scale*(.50+Math.sin(a*3)*.025),x=Math.cos(a)*rad*rr+Math.sin(time*.012+i)*distortion*3,y=-scale*.47+Math.sin(a)*rad*rr*.67+Math.cos(time*.009+i*.4)*distortion*2;if(y>scale*.15)continue;const alpha=.15+((Math.sin(i*13.2+time*.002*distortion)+1)*.17);if(mode==='ascii'){if(i%3===0){ctx.fillStyle=`rgba(167,255,60,${alpha})`;ctx.font='8px monospace';ctx.fillText(['0','1','*','+','·'][i%5],x,y);}}else{ctx.fillStyle=`rgba(${mode==='wire'?'190,255,111':'167,255,60'},${alpha})`;ctx.beginPath();ctx.arc(x,y,mode==='wire'?1:.8+(i%4)*.25,0,Math.PI*2);ctx.fill();}}
-    if(mode==='wire'){ctx.strokeStyle='#a7ff3c30';for(let i=0;i<20;i++){let y=-scale*.78+i*scale*.047,ww=Math.sqrt(Math.max(0,1-Math.pow((y+scale*.48)/(scale*.43),2)))*scale*.46;ctx.beginPath();ctx.ellipse(0,y,ww,Math.max(3,ww*.35),0,0,Math.PI*2);ctx.stroke();}}
-    ctx.restore();
+  // Three.js renders the same persistent specimen in the core and live transmission.
+  const organism=$('#organism'),organismStage=$('#organism-stage'),transmissionOrganismStage=$('#transmission-organism-stage');
+  const trans=$('#transmission'),tx=trans.getContext('2d');
+  let organismView=null,organismLoadPromise=null;
+  function loadOrganism(){
+    if(organismView)return Promise.resolve();
+    if(!organismLoadPromise)organismLoadPromise=import('./core/broccoli-organism').then(({BroccoliOrganism})=>{
+      if(disposed)return;
+      organismView=new BroccoliOrganism(organism,()=>{instability.registerInteraction(.018);discover('interacao');});
+      organismView.setReducedMotion(state.reduced);syncOrganismCanvas();resizeCanvases();
+    }).catch(error=>{organismLoadPromise=null;console.warn('BROCCOLI: renderização tridimensional indisponível.',error);});
+    return organismLoadPromise;
+  }
+  function syncOrganismCanvas(){
+    const live=state.currentView==='transmissao'&&state.visual==='organismo';
+    const parent=live?transmissionOrganismStage:organismStage;
+    if(parent&&organism.parentElement!==parent)parent.append(organism);
+    transmissionOrganismStage?.classList.toggle('active',live);
+    trans.classList.toggle('transmission-canvas-hidden',live);
+    if(organismView)resizeCanvases();
+  }
+  function resizeCanvases(){
+    organismView?.resize(visualizers.resolutionScale);
+    const bounds=trans.getBoundingClientRect(),ratio=visualizers.resolutionScale;
+    if(bounds.width&&bounds.height){trans.width=Math.floor(bounds.width*ratio);trans.height=Math.floor(bounds.height*ratio);tx.setTransform(ratio,0,0,ratio,0,0);}
+    ambientShader?.resize();
+  }
+  function audioLevel(){
+    if(!state.analyser||!state.playing||!state.bins)return 0;
+    state.analyser.getByteFrequencyData(state.bins);
+    let sum=0;for(let i=0;i<Math.min(8,state.bins.length);i++)sum+=state.bins[i];
+    return Math.min(1,sum/Math.min(8,state.bins.length)/255);
   }
   const entityText=['     .-"""-.','    / .===. \\','   / /6 6\\ \\','  | |  .-. | |','   \\ \\_-_/ /','    `-.___.-`','      /|||\\','     / ||| \\','       |||','      / | \\','     /  |  \\'];
   function drawTransmission(time){const r=trans.getBoundingClientRect(),w=r.width,h=r.height;if(!w||!h)return;tx.clearRect(0,0,w,h);const level=audioLevel();
-    if(state.visual==='organismo'){drawOrganism(tx,w,h,time,'particles');return;}
+    if(state.visual==='organismo')return;
     if(state.visual==='pulso'){
       tx.strokeStyle='#a7ff3c22';for(let y=0;y<h;y+=35){tx.beginPath();tx.moveTo(0,y);tx.lineTo(w,y);tx.stroke();}tx.beginPath();for(let x=0;x<w;x+=3){const v=Math.sin(x*.023+time*.002)*(12+level*45)+Math.sin(x*.07-time*.0008)*5;const y=h*.53+v;if(x===0)tx.moveTo(x,y);else tx.lineTo(x,y);}tx.strokeStyle='#a7ff3c';tx.lineWidth=1.5;tx.shadowColor='#a7ff3c';tx.shadowBlur=9;tx.stroke();tx.shadowBlur=0;return;
     }
@@ -414,11 +437,12 @@ export function mountExperience(host) {
   }
   const visualizers = new VisualizerManager();
   visualizers.setReducedMotion(state.reduced);
+  organismView?.setReducedMotion(state.reduced);
   visualizers.setActive({
     init:resizeCanvases,
-    update(time){state.instability=instability.update(audioLevel());const r=organism.getBoundingClientRect();if(r.width&&r.height)drawOrganism(org,r.width,r.height,time);if(state.currentView==='transmissao'){drawTransmission(time);ambientShader?.update(time,state.instability);}},
+    update(time,delta){const level=audioLevel();state.instability=instability.update(level);organismView?.setAudioLevel(level);organismView?.setInstability(state.instability);organismView?.setReducedMotion(state.reduced);organismView?.update(time,delta);if(state.currentView==='transmissao'){drawTransmission(time);ambientShader?.update(time,state.instability);}},
     resize:resizeCanvases,
-    dispose(){org.clearRect(0,0,organism.width,organism.height);tx.clearRect(0,0,trans.width,trans.height);ambientShader?.dispose();}
+    dispose(){organismView?.dispose();tx.clearRect(0,0,trans.width,trans.height);ambientShader?.dispose();}
   });
   resizeObserver = new ResizeObserver(()=>visualizers.resize());
   resizeObserver.observe($('#main'));
@@ -435,9 +459,13 @@ export function mountExperience(host) {
     reduceMotionQuery.removeEventListener('change',onSystemMotionChange);
     window.removeEventListener('popstate',navigateFromHash);
     window.removeEventListener('hashchange',navigateFromHash);
+    audioElement.pause();audioElement.removeAttribute('src');audioElement.load();
+    for(const probe of metadataProbes){probe.pause();probe.removeAttribute('src');probe.load();}metadataProbes.clear();
+    audioElement.removeEventListener('timeupdate',onAudioProgress);
+    audioElement.removeEventListener('loadedmetadata',onAudioProgress);
+    audioElement.removeEventListener('ended',onAudioEnded);
     anomalies.dispose();
     visualizers.dispose();
-    stopOscillators();
     audioManager.dispose();
     updateSharedState({ connected:false, playing:false, trackId:null });
   };

@@ -3,6 +3,7 @@ export class AudioManager {
   private masterGain: GainNode | null = null;
   private analyserNode: AnalyserNode | null = null;
   private frequencyBins: Uint8Array<ArrayBuffer> | null = null;
+  private mediaSource: MediaElementAudioSourceNode | null = null;
 
   get context(): AudioContext | null { return this.audioContext; }
   get master(): GainNode | null { return this.masterGain; }
@@ -17,12 +18,21 @@ export class AudioManager {
       this.masterGain = this.audioContext.createGain();
       this.masterGain.gain.value = this.toGain(initialVolume);
       this.analyserNode = this.audioContext.createAnalyser();
-      this.analyserNode.fftSize = 256;
+      this.analyserNode.fftSize = 1024;
       this.frequencyBins = new Uint8Array(this.analyserNode.frequencyBinCount);
       this.masterGain.connect(this.analyserNode);
       this.analyserNode.connect(this.audioContext.destination);
     }
     if (this.audioContext.state === 'suspended') await this.audioContext.resume();
+    return true;
+  }
+
+  async connectMediaElement(element: HTMLMediaElement, initialVolume: number): Promise<boolean> {
+    if (!await this.resume(initialVolume) || !this.audioContext || !this.masterGain) return false;
+    if (!this.mediaSource) {
+      this.mediaSource = this.audioContext.createMediaElementSource(element);
+      this.mediaSource.connect(this.masterGain);
+    }
     return true;
   }
 
@@ -32,11 +42,13 @@ export class AudioManager {
   }
 
   dispose(): void {
+    this.mediaSource?.disconnect();
     void this.audioContext?.close();
     this.audioContext = null;
     this.masterGain = null;
     this.analyserNode = null;
     this.frequencyBins = null;
+    this.mediaSource = null;
   }
 
   private toGain(value: number): number {
